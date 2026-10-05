@@ -11,6 +11,8 @@ import android.widget.*;
 public class MainActivity extends Activity {
 
     private Button button;
+    private Button checkButton;
+    private TextView resultText;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -35,16 +37,12 @@ public class MainActivity extends Activity {
         title.setText("الزاجل");
         title.setTextSize(32);
         title.setGravity(Gravity.CENTER);
-
         layout.addView(title);
 
         TextView info = new TextView(this);
-        info.setText(
-                "الضربة + الصدى + الصوت + الوشوشة"
-        );
+        info.setText("الضربة + الصدى + الصوت + الوشوشة");
         info.setTextSize(18);
         info.setGravity(Gravity.CENTER);
-
         layout.addView(info);
 
         button = new Button(this);
@@ -68,6 +66,26 @@ public class MainActivity extends Activity {
         });
 
         layout.addView(button);
+
+        checkButton = new Button(this);
+        checkButton.setText("فحص المايكات");
+
+        checkButton.setOnClickListener(v -> {
+
+            resultText.setText(
+                    AudioDeviceChecker.check(
+                            MainActivity.this
+                    )
+            );
+        });
+
+        layout.addView(checkButton);
+
+        resultText = new TextView(this);
+        resultText.setTextSize(15);
+        resultText.setPadding(10, 20, 10, 10);
+
+        layout.addView(resultText);
 
         setContentView(layout);
     }
