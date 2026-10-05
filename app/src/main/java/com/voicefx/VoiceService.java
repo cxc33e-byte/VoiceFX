@@ -11,13 +11,14 @@ public class VoiceService extends Service {
     private AudioTrack player;
     private Thread audioThread;
 
+    private VirtualMicRenderer virtualMic;
+
     private volatile boolean running = false;
 
-    private static final int SAMPLE_RATE = 44100;
+    private static final int SAMPLE_RATE = 48000;
     private static final int CHANNEL_IN = AudioFormat.CHANNEL_IN_MONO;
     private static final int CHANNEL_OUT = AudioFormat.CHANNEL_OUT_MONO;
 
-    // المؤثرات
     private float boost = 1.8f;
     private float volume = 1.0f;
     private float echo = 0.25f;
@@ -41,6 +42,8 @@ public class VoiceService extends Service {
                         .build();
 
         startForeground(1001, notification);
+
+        virtualMic = new VirtualMicRenderer();
 
         startAudio();
     }
@@ -104,7 +107,6 @@ public class VoiceService extends Service {
                 return;
             }
 
-            // 330ms تقريباً من الصدى
             echoBuffer = new short[SAMPLE_RATE / 3];
             echoIndex = 0;
 
@@ -133,18 +135,16 @@ public class VoiceService extends Service {
                                 read
                         );
 
-                        /*
-                         * هذا هو الـPCM المعالج.
-                         *
-                         * لاحقاً نربطه بطبقة
-                         * Virtual Microphone.
-                         */
-                        sendProcessedAudio(
-                                buffer,
-                                read
-                        );
+                        // إرسال الصوت المعالج إلى طبقة
+                        // VirtualMicRenderer
+                        if (virtualMic != null) {
+                            virtualMic.write(
+                                    buffer,
+                                    read
+                            );
+                        }
 
-                        // حالياً فقط للمراقبة المحلية
+                        // مراقبة الصوت محلياً
                         player.write(
                                 buffer,
                                 0,
@@ -224,24 +224,6 @@ public class VoiceService extends Service {
         }
     }
 
-    /*
-     * نقطة خروج الصوت المعالج.
-     *
-     * حالياً لا نرسله لأي تطبيق آخر.
-     * هذه النقطة هي التي سنربطها لاحقاً
-     * بالـVirtual Microphone إذا كان الحل
-     * المستخدم يوفر واجهة لذلك.
-     */
-    private void sendProcessedAudio(
-            short[] buffer,
-            int length) {
-
-        // الصوت المعالج موجود هنا كـPCM 16-bit mono.
-        // لا نرسل الصوت إلى Telegram مباشرة،
-        // لأن Android يمنع التطبيق العادي من
-        // استبدال ميكروفون تطبيق آخر.
-    }
-
     private void stopAudio() {
 
         running = false;
@@ -273,6 +255,7 @@ public class VoiceService extends Service {
 
         echoBuffer = null;
         echoIndex = 0;
+        virtualMic = null;
     }
 
     private void createNotificationChannel() {
