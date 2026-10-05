@@ -12,21 +12,17 @@ public class MainActivity extends Activity {
 
     private AudioRecord recorder;
     private AudioTrack player;
-
     private boolean running = false;
 
     private static final int SAMPLE_RATE = 44100;
-    private static final int DEVICE_ID = 21;
-
-    private TextView status;
-    private SeekBar boostBar;
-    private SeekBar echoBar;
 
     private float boost = 1.5f;
     private float echo = 0.0f;
 
     private short[] echoBuffer;
-    private int echoIndex = 0;
+    private int echoIndex;
+
+    private TextView status;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -55,26 +51,20 @@ public class MainActivity extends Activity {
         title.setText("الزاجل");
         title.setTextSize(30);
         title.setGravity(Gravity.CENTER);
-
         layout.addView(title);
 
         TextView info = new TextView(this);
-        info.setText(
-                "المصدر المستخدم:\n" +
-                "TYPE 25 / ID 21"
-        );
-        info.setTextSize(18);
+        info.setText("مؤثرات صوتية");
+        info.setTextSize(20);
         info.setGravity(Gravity.CENTER);
-
         layout.addView(info);
 
         TextView boostText = new TextView(this);
         boostText.setText("الضربة: 150%");
         boostText.setTextSize(18);
-
         layout.addView(boostText);
 
-        boostBar = new SeekBar(this);
+        SeekBar boostBar = new SeekBar(this);
         boostBar.setMax(30);
         boostBar.setProgress(5);
 
@@ -103,10 +93,9 @@ public class MainActivity extends Activity {
         TextView echoText = new TextView(this);
         echoText.setText("الصدى: 0%");
         echoText.setTextSize(18);
-
         layout.addView(echoText);
 
-        echoBar = new SeekBar(this);
+        SeekBar echoBar = new SeekBar(this);
         echoBar.setMax(20);
         echoBar.setProgress(0);
 
@@ -138,15 +127,10 @@ public class MainActivity extends Activity {
         button.setOnClickListener(v -> {
 
             if (!running) {
-
                 startAudio();
-
                 button.setText("إيقاف الزاجل");
-
             } else {
-
                 stopAudio();
-
                 button.setText("تشغيل الزاجل");
             }
         });
@@ -168,7 +152,7 @@ public class MainActivity extends Activity {
         AudioManager manager =
                 (AudioManager) getSystemService(AUDIO_SERVICE);
 
-        AudioDeviceInfo target = null;
+        AudioDeviceInfo input = null;
 
         AudioDeviceInfo[] devices =
                 manager.getDevices(
@@ -177,19 +161,12 @@ public class MainActivity extends Activity {
 
         for (AudioDeviceInfo device : devices) {
 
-            if (device.getId() == DEVICE_ID) {
-                target = device;
+            if (device.getType() ==
+                    AudioDeviceInfo.TYPE_BUILTIN_MIC) {
+
+                input = device;
                 break;
             }
-        }
-
-        if (target == null) {
-
-            status.setText(
-                    "ID 21 غير موجود حالياً ❌"
-            );
-
-            return;
         }
 
         int minBuffer =
@@ -200,11 +177,7 @@ public class MainActivity extends Activity {
                 );
 
         if (minBuffer <= 0) {
-
-            status.setText(
-                    "فشل إنشاء الصوت ❌"
-            );
-
+            status.setText("فشل إنشاء الصوت ❌");
             return;
         }
 
@@ -219,19 +192,8 @@ public class MainActivity extends Activity {
                             minBuffer * 2
                     );
 
-            boolean accepted =
-                    recorder.setPreferredDevice(target);
-
-            if (!accepted) {
-
-                recorder.release();
-                recorder = null;
-
-                status.setText(
-                        "ID 21 رفضه النظام ❌"
-                );
-
-                return;
+            if (input != null) {
+                recorder.setPreferredDevice(input);
             }
 
             player =
@@ -255,8 +217,8 @@ public class MainActivity extends Activity {
             running = true;
 
             status.setText(
-                    "الزاجل يعمل على:\n" +
-                    "TYPE 25 / ID 21 ✅"
+                    "الزاجل يعمل ✅\n" +
+                    "الميكروفون + المؤثرات"
             );
 
             new Thread(() -> {
@@ -293,7 +255,7 @@ public class MainActivity extends Activity {
         } catch (Exception e) {
 
             status.setText(
-                    "خطأ:\n" +
+                    "خطأ: " +
                     e.getClass().getSimpleName()
             );
         }
@@ -319,21 +281,6 @@ public class MainActivity extends Activity {
                         (echo * 0.8f);
             }
 
-            echoBuffer[echoIndex] =
-                    (short)Math.max(
-                            -32768,
-                            Math.min(
-                                    32767,
-                                    (int)sample
-                            )
-                    );
-
-            echoIndex++;
-
-            if (echoIndex >= echoBuffer.length) {
-                echoIndex = 0;
-            }
-
             sample =
                     Math.max(
                             -32768,
@@ -342,6 +289,15 @@ public class MainActivity extends Activity {
                                     sample
                             )
                     );
+
+            echoBuffer[echoIndex] =
+                    (short) sample;
+
+            echoIndex++;
+
+            if (echoIndex >= echoBuffer.length) {
+                echoIndex = 0;
+            }
 
             buffer[i] = (short) sample;
         }
@@ -378,6 +334,7 @@ public class MainActivity extends Activity {
     protected void onDestroy() {
 
         stopAudio();
+
         super.onDestroy();
     }
 }
