@@ -17,12 +17,20 @@ public class MainActivity extends Activity {
     private static final int SAMPLE_RATE = 44100;
     private static final int REQUEST_MIC = 100;
 
+    private volatile int bass = 0;
+    private volatile int treble = 0;
+    private volatile int echo = 0;
+
+    private short[] echoBuffer;
+    private int echoIndex = 0;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO)
                 != PackageManager.PERMISSION_GRANTED) {
+
             requestPermissions(
                     new String[]{Manifest.permission.RECORD_AUDIO},
                     REQUEST_MIC
@@ -33,6 +41,7 @@ public class MainActivity extends Activity {
     }
 
     private void buildUI() {
+
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(30, 40, 30, 30);
@@ -45,14 +54,15 @@ public class MainActivity extends Activity {
 
         root.addView(title);
 
-        addSlider(root, "Bass");
-        addSlider(root, "Treble");
-        addSlider(root, "Echo");
+        addBassSlider(root);
+        addTrebleSlider(root);
+        addEchoSlider(root);
 
         Button button = new Button(this);
         button.setText("🎙️ تشغيل المايك");
 
         button.setOnClickListener(v -> {
+
             if (!running) {
                 startAudio();
                 button.setText("⏹️ إيقاف المايك");
@@ -67,9 +77,10 @@ public class MainActivity extends Activity {
         setContentView(root);
     }
 
-    private void addSlider(LinearLayout root, String name) {
+    private void addBassSlider(LinearLayout root) {
+
         TextView label = new TextView(this);
-        label.setText(name + ": 0");
+        label.setText("Bass: 0");
         label.setTextSize(18);
 
         SeekBar bar = new SeekBar(this);
@@ -83,7 +94,69 @@ public class MainActivity extends Activity {
                             SeekBar seekBar,
                             int progress,
                             boolean fromUser) {
-                        label.setText(name + ": " + (progress - 10));
+
+                        bass = progress - 10;
+                        label.setText("Bass: " + bass);
+                    }
+
+                    public void onStartTrackingTouch(SeekBar seekBar) {}
+                    public void onStopTrackingTouch(SeekBar seekBar) {}
+                });
+
+        root.addView(label);
+        root.addView(bar);
+    }
+
+    private void addTrebleSlider(LinearLayout root) {
+
+        TextView label = new TextView(this);
+        label.setText("Treble: 0");
+        label.setTextSize(18);
+
+        SeekBar bar = new SeekBar(this);
+        bar.setMax(20);
+        bar.setProgress(10);
+
+        bar.setOnSeekBarChangeListener(
+                new SeekBar.OnSeekBarChangeListener() {
+
+                    public void onProgressChanged(
+                            SeekBar seekBar,
+                            int progress,
+                            boolean fromUser) {
+
+                        treble = progress - 10;
+                        label.setText("Treble: " + treble);
+                    }
+
+                    public void onStartTrackingTouch(SeekBar seekBar) {}
+                    public void onStopTrackingTouch(SeekBar seekBar) {}
+                });
+
+        root.addView(label);
+        root.addView(bar);
+    }
+
+    private void addEchoSlider(LinearLayout root) {
+
+        TextView label = new TextView(this);
+        label.setText("Echo: 0");
+        label.setTextSize(18);
+
+        SeekBar bar = new SeekBar(this);
+        bar.setMax(10);
+        bar.setProgress(0);
+
+        bar.setOnSeekBarChangeListener(
+                new SeekBar.OnSeekBarChangeListener() {
+
+                    public void onProgressChanged(
+                            SeekBar seekBar,
+                            int progress,
+                            boolean fromUser) {
+
+                        echo = progress;
+                        label.setText("Echo: " + echo);
                     }
 
                     public void onStartTrackingTouch(SeekBar seekBar) {}
@@ -121,6 +194,8 @@ public class MainActivity extends Activity {
                 AudioTrack.MODE_STREAM
         );
 
+        echoBuffer = new short[SAMPLE_RATE / 4];
+        echoIndex = 0;
         running = true;
 
         recorder.startRecording();
@@ -139,6 +214,9 @@ public class MainActivity extends Activity {
                 );
 
                 if (read > 0) {
+
+                    processAudio(buffer, read);
+
                     player.write(
                             buffer,
                             0,
@@ -150,11 +228,46 @@ public class MainActivity extends Activity {
         }).start();
     }
 
+    private void processAudio(short[] buffer, int length) {
+
+        for (int i = 0; i < length; i++) {
+
+            float sample = buffer[i];
+
+            sample += sample * (bass * 0.025f);
+            sample += sample * (treble * 0.015f);
+
+            if (echo > 0 && echoBuffer != null) {
+
+                short delayed = echoBuffer[echoIndex];
+
+                sample += delayed * (echo * 0.06f);
+
+                echoBuffer[echoIndex] = buffer[i];
+
+                echoIndex++;
+
+                if (echoIndex >= echoBuffer.length) {
+                    echoIndex = 0;
+                }
+            }
+
+            if (sample > 32767)
+                sample = 32767;
+
+            if (sample < -32768)
+                sample = -32768;
+
+            buffer[i] = (short) sample;
+        }
+    }
+
     private void stopAudio() {
 
         running = false;
 
         if (recorder != null) {
+
             try {
                 recorder.stop();
             } catch (Exception ignored) {}
@@ -164,6 +277,7 @@ public class MainActivity extends Activity {
         }
 
         if (player != null) {
+
             try {
                 player.stop();
             } catch (Exception ignored) {}
@@ -171,11 +285,15 @@ public class MainActivity extends Activity {
             player.release();
             player = null;
         }
+
+        echoBuffer = null;
     }
 
     @Override
     protected void onDestroy() {
+
         stopAudio();
+
         super.onDestroy();
     }
 }
