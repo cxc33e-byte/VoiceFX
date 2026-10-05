@@ -6,7 +6,8 @@
 
     <application
         android:theme="@android:style/Theme.Material.Light.NoActionBar"
-       android:label="الزاجل"
+        android:label="الزاجل"
+        android:icon="@drawable/free_mic"
         android:allowBackup="false"
         android:supportsRtl="true">
 
