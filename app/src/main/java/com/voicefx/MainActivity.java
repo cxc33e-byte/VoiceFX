@@ -10,7 +10,23 @@ import android.widget.*;
 
 public class MainActivity extends Activity {
 
-    private TextView result;
+    private AudioRecord recorder;
+    private AudioTrack player;
+
+    private boolean running = false;
+
+    private static final int SAMPLE_RATE = 44100;
+    private static final int DEVICE_ID = 21;
+
+    private TextView status;
+    private SeekBar boostBar;
+    private SeekBar echoBar;
+
+    private float boost = 1.5f;
+    private float echo = 0.0f;
+
+    private short[] echoBuffer;
+    private int echoIndex = 0;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -33,7 +49,7 @@ public class MainActivity extends Activity {
         LinearLayout layout = new LinearLayout(this);
         layout.setOrientation(LinearLayout.VERTICAL);
         layout.setGravity(Gravity.CENTER);
-        layout.setPadding(30, 40, 30, 30);
+        layout.setPadding(30, 30, 30, 30);
 
         TextView title = new TextView(this);
         title.setText("الزاجل");
@@ -42,38 +58,126 @@ public class MainActivity extends Activity {
 
         layout.addView(title);
 
-        Button test = new Button(this);
-        test.setText("اختبار المصدر TYPE 25 - ID 21");
+        TextView info = new TextView(this);
+        info.setText(
+                "المصدر المستخدم:\n" +
+                "TYPE 25 / ID 21"
+        );
+        info.setTextSize(18);
+        info.setGravity(Gravity.CENTER);
 
-        layout.addView(test);
+        layout.addView(info);
 
-        result = new TextView(this);
-        result.setTextSize(18);
-        result.setGravity(Gravity.CENTER);
-        result.setPadding(10, 30, 10, 10);
+        TextView boostText = new TextView(this);
+        boostText.setText("الضربة: 150%");
+        boostText.setTextSize(18);
 
-        layout.addView(result);
+        layout.addView(boostText);
 
-        test.setOnClickListener(v -> testSource());
+        boostBar = new SeekBar(this);
+        boostBar.setMax(30);
+        boostBar.setProgress(5);
+
+        boostBar.setOnSeekBarChangeListener(
+                new SeekBar.OnSeekBarChangeListener() {
+
+                    public void onProgressChanged(
+                            SeekBar s, int p, boolean fromUser) {
+
+                        boost = 1.0f + (p * 0.1f);
+
+                        boostText.setText(
+                                "الضربة: " +
+                                (int)(boost * 100) +
+                                "%"
+                        );
+                    }
+
+                    public void onStartTrackingTouch(SeekBar s) {}
+                    public void onStopTrackingTouch(SeekBar s) {}
+                }
+        );
+
+        layout.addView(boostBar);
+
+        TextView echoText = new TextView(this);
+        echoText.setText("الصدى: 0%");
+        echoText.setTextSize(18);
+
+        layout.addView(echoText);
+
+        echoBar = new SeekBar(this);
+        echoBar.setMax(20);
+        echoBar.setProgress(0);
+
+        echoBar.setOnSeekBarChangeListener(
+                new SeekBar.OnSeekBarChangeListener() {
+
+                    public void onProgressChanged(
+                            SeekBar s, int p, boolean fromUser) {
+
+                        echo = p / 20.0f;
+
+                        echoText.setText(
+                                "الصدى: " +
+                                (int)(echo * 100) +
+                                "%"
+                        );
+                    }
+
+                    public void onStartTrackingTouch(SeekBar s) {}
+                    public void onStopTrackingTouch(SeekBar s) {}
+                }
+        );
+
+        layout.addView(echoBar);
+
+        Button button = new Button(this);
+        button.setText("تشغيل الزاجل");
+
+        button.setOnClickListener(v -> {
+
+            if (!running) {
+
+                startAudio();
+
+                button.setText("إيقاف الزاجل");
+
+            } else {
+
+                stopAudio();
+
+                button.setText("تشغيل الزاجل");
+            }
+        });
+
+        layout.addView(button);
+
+        status = new TextView(this);
+        status.setTextSize(17);
+        status.setGravity(Gravity.CENTER);
+        status.setPadding(10, 25, 10, 10);
+
+        layout.addView(status);
 
         setContentView(layout);
     }
 
-    private void testSource() {
+    private void startAudio() {
 
         AudioManager manager =
                 (AudioManager) getSystemService(AUDIO_SERVICE);
+
+        AudioDeviceInfo target = null;
 
         AudioDeviceInfo[] devices =
                 manager.getDevices(
                         AudioManager.GET_DEVICES_INPUTS
                 );
 
-        AudioDeviceInfo target = null;
-
         for (AudioDeviceInfo device : devices) {
 
-            if (device.getId() == 21) {
+            if (device.getId() == DEVICE_ID) {
                 target = device;
                 break;
             }
@@ -81,53 +185,199 @@ public class MainActivity extends Activity {
 
         if (target == null) {
 
-            result.setText(
-                    "المصدر ID 21 غير موجود حالياً."
+            status.setText(
+                    "ID 21 غير موجود حالياً ❌"
             );
 
             return;
         }
 
-        int bufferSize =
+        int minBuffer =
                 AudioRecord.getMinBufferSize(
-                        44100,
+                        SAMPLE_RATE,
                         AudioFormat.CHANNEL_IN_MONO,
                         AudioFormat.ENCODING_PCM_16BIT
                 );
 
+        if (minBuffer <= 0) {
+
+            status.setText(
+                    "فشل إنشاء الصوت ❌"
+            );
+
+            return;
+        }
+
         try {
 
-            AudioRecord recorder =
+            recorder =
                     new AudioRecord(
                             MediaRecorder.AudioSource.MIC,
-                            44100,
+                            SAMPLE_RATE,
                             AudioFormat.CHANNEL_IN_MONO,
                             AudioFormat.ENCODING_PCM_16BIT,
-                            bufferSize * 2
+                            minBuffer * 2
                     );
 
             boolean accepted =
                     recorder.setPreferredDevice(target);
 
-            result.setText(
-                    "ID: 21\n" +
-                    "TYPE: 25\n\n" +
-                    "نتيجة اختيار المصدر:\n" +
-                    (accepted
-                            ? "تم قبول المصدر من النظام ✅"
-                            : "النظام رفض المصدر ❌")
+            if (!accepted) {
+
+                recorder.release();
+                recorder = null;
+
+                status.setText(
+                        "ID 21 رفضه النظام ❌"
+                );
+
+                return;
+            }
+
+            player =
+                    new AudioTrack(
+                            AudioManager.STREAM_MUSIC,
+                            SAMPLE_RATE,
+                            AudioFormat.CHANNEL_OUT_MONO,
+                            AudioFormat.ENCODING_PCM_16BIT,
+                            minBuffer * 2,
+                            AudioTrack.MODE_STREAM
+                    );
+
+            echoBuffer =
+                    new short[SAMPLE_RATE / 3];
+
+            echoIndex = 0;
+
+            recorder.startRecording();
+            player.play();
+
+            running = true;
+
+            status.setText(
+                    "الزاجل يعمل على:\n" +
+                    "TYPE 25 / ID 21 ✅"
             );
 
-            recorder.release();
+            new Thread(() -> {
+
+                short[] buffer =
+                        new short[minBuffer];
+
+                while (running) {
+
+                    int read =
+                            recorder.read(
+                                    buffer,
+                                    0,
+                                    buffer.length
+                            );
+
+                    if (read > 0) {
+
+                        processAudio(
+                                buffer,
+                                read
+                        );
+
+                        player.write(
+                                buffer,
+                                0,
+                                read
+                        );
+                    }
+                }
+
+            }).start();
 
         } catch (Exception e) {
 
-            result.setText(
-                    "صار خطأ:\n\n" +
-                    e.getClass().getSimpleName() +
-                    "\n" +
-                    e.getMessage()
+            status.setText(
+                    "خطأ:\n" +
+                    e.getClass().getSimpleName()
             );
         }
+    }
+
+    private void processAudio(
+            short[] buffer,
+            int length) {
+
+        for (int i = 0; i < length; i++) {
+
+            float sample = buffer[i];
+
+            sample *= boost;
+
+            if (echo > 0) {
+
+                short delayed =
+                        echoBuffer[echoIndex];
+
+                sample +=
+                        delayed *
+                        (echo * 0.8f);
+            }
+
+            echoBuffer[echoIndex] =
+                    (short)Math.max(
+                            -32768,
+                            Math.min(
+                                    32767,
+                                    (int)sample
+                            )
+                    );
+
+            echoIndex++;
+
+            if (echoIndex >= echoBuffer.length) {
+                echoIndex = 0;
+            }
+
+            sample =
+                    Math.max(
+                            -32768,
+                            Math.min(
+                                    32767,
+                                    sample
+                            )
+                    );
+
+            buffer[i] = (short) sample;
+        }
+    }
+
+    private void stopAudio() {
+
+        running = false;
+
+        if (recorder != null) {
+
+            try {
+                recorder.stop();
+            } catch (Exception ignored) {}
+
+            recorder.release();
+            recorder = null;
+        }
+
+        if (player != null) {
+
+            try {
+                player.stop();
+            } catch (Exception ignored) {}
+
+            player.release();
+            player = null;
+        }
+
+        echoBuffer = null;
+    }
+
+    @Override
+    protected void onDestroy() {
+
+        stopAudio();
+        super.onDestroy();
     }
 }
