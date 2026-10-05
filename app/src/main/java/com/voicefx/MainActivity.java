@@ -5,6 +5,7 @@ import android.os.*;
 import android.content.*;
 import android.content.pm.PackageManager;
 import android.Manifest;
+import android.media.AudioManager;
 import android.view.Gravity;
 import android.widget.*;
 
@@ -40,7 +41,7 @@ public class MainActivity extends Activity {
         layout.addView(title);
 
         TextView info = new TextView(this);
-        info.setText("الضربة + الصدى + الصوت + الوشوشة");
+        info.setText("اختبار Remote Submix");
         info.setTextSize(18);
         info.setGravity(Gravity.CENTER);
         layout.addView(info);
@@ -68,21 +69,24 @@ public class MainActivity extends Activity {
         layout.addView(button);
 
         checkButton = new Button(this);
-        checkButton.setText("فحص المايكات");
+        checkButton.setText("اختبار ID 21");
 
         checkButton.setOnClickListener(v -> {
 
+            AudioManager audioManager =
+                    (AudioManager) getSystemService(
+                            AUDIO_SERVICE
+                    );
+
             resultText.setText(
-                    AudioDeviceChecker.check(
-                            MainActivity.this
-                    )
+                    RemoteSubmixTest.test(audioManager)
             );
         });
 
         layout.addView(checkButton);
 
         resultText = new TextView(this);
-        resultText.setTextSize(15);
+        resultText.setTextSize(16);
         resultText.setPadding(10, 20, 10, 10);
 
         layout.addView(resultText);
