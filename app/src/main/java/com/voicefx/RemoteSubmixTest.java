@@ -2,8 +2,9 @@ package com.voicefx;
 
 import android.media.AudioDeviceInfo;
 import android.media.AudioFormat;
-import android.media.AudioRecord;
 import android.media.AudioManager;
+import android.media.AudioRecord;
+import android.media.AudioTrack;
 import android.media.MediaRecorder;
 import android.os.Build;
 
@@ -31,7 +32,7 @@ public class RemoteSubmixTest {
             return "ID 21 غير موجود";
         }
 
-        int sampleRate = 48000;
+        final int sampleRate = 48000;
 
         int bufferSize =
                 AudioRecord.getMinBufferSize(
@@ -44,9 +45,26 @@ public class RemoteSubmixTest {
             return "Buffer Error: " + bufferSize;
         }
 
+        AudioTrack player = null;
         AudioRecord record = null;
 
         try {
+
+            player = new AudioTrack(
+                    new AudioFormat.Builder()
+                            .setSampleRate(sampleRate)
+                            .setEncoding(
+                                    AudioFormat.ENCODING_PCM_16BIT
+                            )
+                            .setChannelMask(
+                                    AudioFormat.CHANNEL_OUT_MONO
+                            )
+                            .build(),
+
+                    bufferSize * 2,
+                    AudioTrack.MODE_STREAM,
+                    AudioManager.AUDIO_SESSION_ID_GENERATE
+            );
 
             record = new AudioRecord(
                     MediaRecorder.AudioSource.MIC,
@@ -56,25 +74,52 @@ public class RemoteSubmixTest {
                     bufferSize * 4
             );
 
+            if (player.getState()
+                    != AudioTrack.STATE_INITIALIZED) {
+
+                return "AudioTrack فشل";
+            }
+
             if (record.getState()
                     != AudioRecord.STATE_INITIALIZED) {
 
-                return "AudioRecord INITIALIZED = NO";
+                return "AudioRecord فشل";
             }
 
             boolean preferred =
                     record.setPreferredDevice(target);
 
             if (!preferred) {
-                return "ID 21 موجود لكن التوجيه فشل";
+                return "Preferred Device فشل";
             }
+
+            // نولد صوت اختبار
+            short[] tone =
+                    new short[4800];
+
+            for (int i = 0; i < tone.length; i++) {
+
+                double angle =
+                        2.0 * Math.PI * 440.0 *
+                        i / sampleRate;
+
+                tone[i] =
+                        (short)
+                        (Math.sin(angle) * 10000);
+            }
+
+            player.play();
 
             record.startRecording();
 
-            int recordingState =
-                    record.getRecordingState();
+            // نرسل الصوت إلى AudioTrack
+            player.write(
+                    tone,
+                    0,
+                    tone.length
+            );
 
-            short[] buffer =
+            short[] input =
                     new short[bufferSize / 2];
 
             int totalRead = 0;
@@ -87,9 +132,9 @@ public class RemoteSubmixTest {
 
                 int read =
                         record.read(
-                                buffer,
+                                input,
                                 0,
-                                buffer.length,
+                                input.length,
                                 AudioRecord.READ_NON_BLOCKING
                         );
 
@@ -99,30 +144,22 @@ public class RemoteSubmixTest {
                 }
             }
 
-            record.stop();
-
             return
                     "ID 21 موجود ✅\n" +
-                    "Preferred: true\n" +
-                    "RecordingState: " +
-                    recordingState +
-                    "\n" +
+                    "Preferred: " + preferred + "\n" +
                     "Positive reads: " +
-                    positiveReads +
-                    "\n" +
+                    positiveReads + "\n" +
                     "Total PCM: " +
                     totalRead;
 
         } catch (SecurityException e) {
 
-            return
-                    "صلاحية النظام منعت القراءة ❌\n" +
+            return "النظام منع الالتقاط ❌\n" +
                     e.getMessage();
 
         } catch (Exception e) {
 
-            return
-                    "خطأ ❌\n" +
+            return "خطأ ❌\n" +
                     e.getClass().getSimpleName() +
                     "\n" +
                     e.getMessage();
@@ -130,7 +167,17 @@ public class RemoteSubmixTest {
         } finally {
 
             if (record != null) {
+                try {
+                    record.stop();
+                } catch (Exception ignored) {}
                 record.release();
+            }
+
+            if (player != null) {
+                try {
+                    player.stop();
+                } catch (Exception ignored) {}
+                player.release();
             }
         }
     }
