@@ -10,7 +10,6 @@ public class VoiceService extends Service {
     private AudioRecord recorder;
     private AudioTrack player;
     private Thread audioThread;
-
     private VirtualMicRenderer virtualMic;
 
     private volatile boolean running = false;
@@ -50,17 +49,17 @@ public class VoiceService extends Service {
 
     private void startAudio() {
 
-        int bufferSize = AudioRecord.getMinBufferSize(
+        int calculatedBufferSize = AudioRecord.getMinBufferSize(
                 SAMPLE_RATE,
                 CHANNEL_IN,
                 AudioFormat.ENCODING_PCM_16BIT
         );
 
-        if (bufferSize <= 0) {
+        if (calculatedBufferSize <= 0) {
             return;
         }
 
-        bufferSize *= 2;
+        final int bufferSize = calculatedBufferSize * 2;
 
         try {
 
@@ -74,7 +73,6 @@ public class VoiceService extends Service {
 
             if (recorder.getState()
                     != AudioRecord.STATE_INITIALIZED) {
-
                 stopAudio();
                 return;
             }
@@ -102,7 +100,6 @@ public class VoiceService extends Service {
 
             if (player.getState()
                     != AudioTrack.STATE_INITIALIZED) {
-
                 stopAudio();
                 return;
             }
@@ -130,13 +127,8 @@ public class VoiceService extends Service {
 
                     if (read > 0) {
 
-                        processAudio(
-                                buffer,
-                                read
-                        );
+                        processAudio(buffer, read);
 
-                        // إرسال الصوت المعالج إلى طبقة
-                        // VirtualMicRenderer
                         if (virtualMic != null) {
                             virtualMic.write(
                                     buffer,
@@ -144,7 +136,6 @@ public class VoiceService extends Service {
                             );
                         }
 
-                        // مراقبة الصوت محلياً
                         player.write(
                                 buffer,
                                 0,
@@ -158,7 +149,6 @@ public class VoiceService extends Service {
             audioThread.start();
 
         } catch (Exception e) {
-
             stopAudio();
         }
     }
@@ -171,23 +161,17 @@ public class VoiceService extends Service {
 
             float sample = buffer[i];
 
-            // الضربة
             sample *= boost;
-
-            // مستوى الصوت
             sample *= volume;
 
-            // الصدى
             if (echo > 0.0f) {
 
                 short delayed =
                         echoBuffer[echoIndex];
 
-                sample +=
-                        delayed * echo;
+                sample += delayed * echo;
             }
 
-            // الوشوشة
             if (noise > 0.0f) {
 
                 double random =
@@ -199,7 +183,6 @@ public class VoiceService extends Service {
                         noise;
             }
 
-            // منع التشويش الرقمي
             if (sample > 32767) {
                 sample = 32767;
             }
@@ -208,11 +191,9 @@ public class VoiceService extends Service {
                 sample = -32768;
             }
 
-            short output =
-                    (short) sample;
+            short output = (short) sample;
 
-            echoBuffer[echoIndex] =
-                    output;
+            echoBuffer[echoIndex] = output;
 
             echoIndex++;
 
@@ -293,7 +274,6 @@ public class VoiceService extends Service {
     public void onDestroy() {
 
         stopAudio();
-
         super.onDestroy();
     }
 
