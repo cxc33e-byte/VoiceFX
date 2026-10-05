@@ -41,7 +41,7 @@ public class RemoteSubmixTest {
                 );
 
         if (bufferSize <= 0) {
-            return "تعذر إنشاء buffer";
+            return "Buffer Error: " + bufferSize;
         }
 
         AudioRecord record = null;
@@ -49,53 +49,80 @@ public class RemoteSubmixTest {
         try {
 
             record = new AudioRecord(
-                    MediaRecorder.AudioSource.DEFAULT,
+                    MediaRecorder.AudioSource.MIC,
                     sampleRate,
                     AudioFormat.CHANNEL_IN_MONO,
                     AudioFormat.ENCODING_PCM_16BIT,
-                    bufferSize * 2
+                    bufferSize * 4
             );
 
             if (record.getState()
                     != AudioRecord.STATE_INITIALIZED) {
 
-                return "AudioRecord فشل بالتهيئة";
+                return "AudioRecord INITIALIZED = NO";
             }
 
-            boolean accepted =
+            boolean preferred =
                     record.setPreferredDevice(target);
 
-            String result =
-                    "ID 21 موجود\n" +
-                    "الاسم: " +
-                    target.getProductName() +
-                    "\n" +
-                    "setPreferredDevice: " +
-                    accepted;
+            if (!preferred) {
+                return "ID 21 موجود لكن التوجيه فشل";
+            }
 
             record.startRecording();
+
+            int recordingState =
+                    record.getRecordingState();
 
             short[] buffer =
                     new short[bufferSize / 2];
 
-            int read =
-                    record.read(
-                            buffer,
-                            0,
-                            buffer.length
-                    );
+            int totalRead = 0;
+            int positiveReads = 0;
+
+            long start =
+                    System.currentTimeMillis();
+
+            while (System.currentTimeMillis() - start < 1500) {
+
+                int read =
+                        record.read(
+                                buffer,
+                                0,
+                                buffer.length,
+                                AudioRecord.READ_NON_BLOCKING
+                        );
+
+                if (read > 0) {
+                    totalRead += read;
+                    positiveReads++;
+                }
+            }
 
             record.stop();
 
-            result +=
-                    "\nread PCM samples: " +
-                    read;
+            return
+                    "ID 21 موجود ✅\n" +
+                    "Preferred: true\n" +
+                    "RecordingState: " +
+                    recordingState +
+                    "\n" +
+                    "Positive reads: " +
+                    positiveReads +
+                    "\n" +
+                    "Total PCM: " +
+                    totalRead;
 
-            return result;
+        } catch (SecurityException e) {
+
+            return
+                    "صلاحية النظام منعت القراءة ❌\n" +
+                    e.getMessage();
 
         } catch (Exception e) {
 
-            return "خطأ: " +
+            return
+                    "خطأ ❌\n" +
                     e.getClass().getSimpleName() +
                     "\n" +
                     e.getMessage();
