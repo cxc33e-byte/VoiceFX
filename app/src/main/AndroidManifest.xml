@@ -7,7 +7,7 @@
     <application
         android:theme="@android:style/Theme.Material.Light.NoActionBar"
         android:label="الزاجل"
-        android:icon="@drawable/IMG_0116"
+        android:icon="@drawable/img_0116"
         android:allowBackup="false"
         android:supportsRtl="true">
 
