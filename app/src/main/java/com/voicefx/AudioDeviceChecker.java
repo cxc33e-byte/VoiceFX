@@ -9,14 +9,8 @@ public class AudioDeviceChecker {
 
     public static String check(Context context) {
 
-        StringBuilder result = new StringBuilder();
-
-        result.append("الزاجل - مخارج الصوت\n\n");
-
         if (Build.VERSION.SDK_INT < 23) {
-            return result.append(
-                    "Android قديم"
-            ).toString();
+            return "Android قديم";
         }
 
         AudioManager audioManager =
@@ -28,17 +22,19 @@ public class AudioDeviceChecker {
             return "AudioManager غير متوفر";
         }
 
-        AudioDeviceInfo[] devices =
+        StringBuilder result = new StringBuilder();
+
+        result.append("الزاجل - فحص الصوت\n\n");
+
+        // INPUTS
+        result.append("===== INPUTS =====\n\n");
+
+        AudioDeviceInfo[] inputs =
                 audioManager.getDevices(
-                        AudioManager.GET_DEVICES_OUTPUTS
+                        AudioManager.GET_DEVICES_INPUTS
                 );
 
-        result.append(
-                "عدد مخارج الصوت: "
-        ).append(devices.length)
-         .append("\n\n");
-
-        for (AudioDeviceInfo device : devices) {
+        for (AudioDeviceInfo device : inputs) {
 
             result.append("الاسم: ")
                     .append(device.getProductName())
@@ -51,6 +47,87 @@ public class AudioDeviceChecker {
             result.append("ID: ")
                     .append(device.getId())
                     .append("\n");
+
+            result.append("Sample Rates: ");
+
+            int[] rates = device.getSampleRates();
+
+            if (rates != null && rates.length > 0) {
+                for (int rate : rates) {
+                    result.append(rate).append(" ");
+                }
+            } else {
+                result.append("غير متوفر");
+            }
+
+            result.append("\n");
+
+            result.append("Channels: ");
+
+            int[] channels = device.getChannelCounts();
+
+            if (channels != null && channels.length > 0) {
+                for (int channel : channels) {
+                    result.append(channel).append(" ");
+                }
+            } else {
+                result.append("غير متوفر");
+            }
+
+            result.append("\n");
+
+            result.append("----------------\n");
+        }
+
+        // OUTPUTS
+        result.append("\n===== OUTPUTS =====\n\n");
+
+        AudioDeviceInfo[] outputs =
+                audioManager.getDevices(
+                        AudioManager.GET_DEVICES_OUTPUTS
+                );
+
+        for (AudioDeviceInfo device : outputs) {
+
+            result.append("الاسم: ")
+                    .append(device.getProductName())
+                    .append("\n");
+
+            result.append("النوع: ")
+                    .append(device.getType())
+                    .append("\n");
+
+            result.append("ID: ")
+                    .append(device.getId())
+                    .append("\n");
+
+            result.append("Sample Rates: ");
+
+            int[] rates = device.getSampleRates();
+
+            if (rates != null && rates.length > 0) {
+                for (int rate : rates) {
+                    result.append(rate).append(" ");
+                }
+            } else {
+                result.append("غير متوفر");
+            }
+
+            result.append("\n");
+
+            result.append("Channels: ");
+
+            int[] channels = device.getChannelCounts();
+
+            if (channels != null && channels.length > 0) {
+                for (int channel : channels) {
+                    result.append(channel).append(" ");
+                }
+            } else {
+                result.append("غير متوفر");
+            }
+
+            result.append("\n");
 
             result.append("----------------\n");
         }
