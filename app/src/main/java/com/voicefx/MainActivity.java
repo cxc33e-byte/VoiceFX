@@ -11,7 +11,6 @@ import android.view.Gravity;
 
 public class MainActivity extends Activity {
 
-    private LinearLayout root;
     private TextView result;
 
     @Override
@@ -20,47 +19,37 @@ public class MainActivity extends Activity {
 
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO)
                 != PackageManager.PERMISSION_GRANTED) {
-
             requestPermissions(
                     new String[]{Manifest.permission.RECORD_AUDIO},
                     100
             );
         }
 
-        buildUI();
-    }
-
-    private void buildUI() {
-
-        ScrollView scroll = new ScrollView(this);
-
-        root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setGravity(Gravity.CENTER);
-        root.setPadding(30, 40, 30, 30);
+        LinearLayout layout = new LinearLayout(this);
+        layout.setOrientation(LinearLayout.VERTICAL);
+        layout.setGravity(Gravity.CENTER);
+        layout.setPadding(30, 40, 30, 30);
 
         TextView title = new TextView(this);
-        title.setText("الزاجل");
-        title.setTextSize(30);
+        title.setText("الزاجل - فحص المايكات");
+        title.setTextSize(26);
         title.setGravity(Gravity.CENTER);
 
-        root.addView(title);
+        layout.addView(title);
 
         Button scan = new Button(this);
         scan.setText("فحص مصادر المايك");
-
-        scan.setOnClickListener(v -> scanDevices());
-
-        root.addView(scan);
+        layout.addView(scan);
 
         result = new TextView(this);
         result.setTextSize(18);
         result.setPadding(10, 30, 10, 10);
 
-        root.addView(result);
+        layout.addView(result);
 
-        scroll.addView(root);
-        setContentView(scroll);
+        scan.setOnClickListener(v -> scanDevices());
+
+        setContentView(layout);
     }
 
     private void scanDevices() {
@@ -69,49 +58,45 @@ public class MainActivity extends Activity {
                 (AudioManager) getSystemService(AUDIO_SERVICE);
 
         AudioDeviceInfo[] devices =
-                manager.getDevices(
-                        AudioManager.GET_DEVICES_INPUTS
-                );
+                manager.getDevices(AudioManager.GET_DEVICES_INPUTS);
 
-        result.setText(
-                "عدد مصادر الإدخال: " +
-                devices.length +
-                "\n\n"
-        );
+        StringBuilder text = new StringBuilder();
+
+        text.append("عدد مصادر الإدخال: ")
+                .append(devices.length)
+                .append("\n\n");
 
         for (int i = 0; i < devices.length; i++) {
 
             AudioDeviceInfo device = devices[i];
 
-            String name =
-                    String.valueOf(
-                            device.getProductName()
-                    );
+            int type = device.getType();
+            int id = device.getId();
 
-            int type =
-                    device.getType();
+            text.append("المصدر ")
+                    .append(i + 1)
+                    .append("\n");
 
-            String typeName =
-                    getTypeName(type);
+            text.append("الاسم: ")
+                    .append(device.getProductName())
+                    .append("\n");
 
-            result.append(
-                    "المصدر " +
-                    (i + 1) +
-                    "\n" +
-                    "الاسم: " +
-                    name +
-                    "\n" +
-                    "النوع: " +
-                    typeName +
-                    "\n" +
-                    "TYPE: " +
-                    type +
-                    "\n" +
-                    "ID: " +
-                    device.getId() +
-                    "\n\n"
-            );
+            text.append("النوع: ")
+                    .append(getTypeName(type))
+                    .append("\n");
+
+            text.append("TYPE: ")
+                    .append(type)
+                    .append("\n");
+
+            text.append("ID: ")
+                    .append(id)
+                    .append("\n");
+
+            text.append("--------------------\n\n");
         }
+
+        result.setText(text.toString());
     }
 
     private String getTypeName(int type) {
@@ -143,10 +128,10 @@ public class MainActivity extends Activity {
                 return "USB_HEADSET";
 
             case AudioDeviceInfo.TYPE_TELEPHONY:
-                return "TELEPHONY";
+                return "TELEPHONY - الاتصالات";
 
             default:
-                return "OTHER";
+                return "OTHER - غير معروف";
         }
     }
 }
