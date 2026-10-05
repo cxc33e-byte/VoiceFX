@@ -1,5 +1,6 @@
 package com.voicefx;
 
+import android.media.AudioAttributes;
 import android.media.AudioDeviceInfo;
 import android.media.AudioFormat;
 import android.media.AudioManager;
@@ -14,6 +15,10 @@ public class RemoteSubmixTest {
 
         if (Build.VERSION.SDK_INT < 23) {
             return "Android قديم";
+        }
+
+        if (audioManager == null) {
+            return "AudioManager غير متوفر";
         }
 
         AudioDeviceInfo target = null;
@@ -50,7 +55,17 @@ public class RemoteSubmixTest {
 
         try {
 
-            player = new AudioTrack(
+            AudioAttributes attributes =
+                    new AudioAttributes.Builder()
+                            .setUsage(
+                                    AudioAttributes.USAGE_MEDIA
+                            )
+                            .setContentType(
+                                    AudioAttributes.CONTENT_TYPE_SPEECH
+                            )
+                            .build();
+
+            AudioFormat outputFormat =
                     new AudioFormat.Builder()
                             .setSampleRate(sampleRate)
                             .setEncoding(
@@ -59,8 +74,11 @@ public class RemoteSubmixTest {
                             .setChannelMask(
                                     AudioFormat.CHANNEL_OUT_MONO
                             )
-                            .build(),
+                            .build();
 
+            player = new AudioTrack(
+                    attributes,
+                    outputFormat,
                     bufferSize * 2,
                     AudioTrack.MODE_STREAM,
                     AudioManager.AUDIO_SESSION_ID_GENERATE
@@ -77,23 +95,22 @@ public class RemoteSubmixTest {
             if (player.getState()
                     != AudioTrack.STATE_INITIALIZED) {
 
-                return "AudioTrack فشل";
+                return "AudioTrack فشل بالتهيئة";
             }
 
             if (record.getState()
                     != AudioRecord.STATE_INITIALIZED) {
 
-                return "AudioRecord فشل";
+                return "AudioRecord فشل بالتهيئة";
             }
 
             boolean preferred =
                     record.setPreferredDevice(target);
 
             if (!preferred) {
-                return "Preferred Device فشل";
+                return "توجيه AudioRecord إلى ID 21 فشل";
             }
 
-            // نولد صوت اختبار
             short[] tone =
                     new short[4800];
 
@@ -109,10 +126,8 @@ public class RemoteSubmixTest {
             }
 
             player.play();
-
             record.startRecording();
 
-            // نرسل الصوت إلى AudioTrack
             player.write(
                     tone,
                     0,
@@ -154,12 +169,14 @@ public class RemoteSubmixTest {
 
         } catch (SecurityException e) {
 
-            return "النظام منع الالتقاط ❌\n" +
+            return
+                    "النظام منع الالتقاط ❌\n" +
                     e.getMessage();
 
         } catch (Exception e) {
 
-            return "خطأ ❌\n" +
+            return
+                    "خطأ ❌\n" +
                     e.getClass().getSimpleName() +
                     "\n" +
                     e.getMessage();
@@ -167,16 +184,20 @@ public class RemoteSubmixTest {
         } finally {
 
             if (record != null) {
+
                 try {
                     record.stop();
                 } catch (Exception ignored) {}
+
                 record.release();
             }
 
             if (player != null) {
+
                 try {
                     player.stop();
                 } catch (Exception ignored) {}
+
                 player.release();
             }
         }
