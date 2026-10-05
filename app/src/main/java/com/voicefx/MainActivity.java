@@ -1,282 +1,126 @@
 package com.voicefx;
 
-import android.Manifest;
 import android.app.Activity;
-import android.content.pm.PackageManager;
-import android.media.*;
 import android.os.Bundle;
+import android.os.Handler;
+import android.media.AudioDeviceInfo;
+import android.media.AudioManager;
 import android.view.Gravity;
 import android.widget.*;
 
 public class MainActivity extends Activity {
 
-    private TextView resultText;
-    private AudioRecord recorder;
-    private AudioTrack player;
-    private Thread thread;
-    private volatile boolean running = false;
-
-    private final int SAMPLE_RATE = 48000;
+    private TextView result;
+    private Handler handler = new Handler();
+    private boolean monitoring = false;
 
     @Override
-    protected void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-
-        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO)
-                != PackageManager.PERMISSION_GRANTED) {
-
-            requestPermissions(
-                    new String[]{Manifest.permission.RECORD_AUDIO},
-                    100
-            );
-        }
+    protected void onCreate(Bundle b) {
+        super.onCreate(b);
 
         LinearLayout layout = new LinearLayout(this);
         layout.setOrientation(LinearLayout.VERTICAL);
         layout.setGravity(Gravity.CENTER);
-        layout.setPadding(30, 30, 30, 30);
+        layout.setPadding(25, 25, 25, 25);
 
         TextView title = new TextView(this);
         title.setText("الزاجل");
-        title.setTextSize(32);
+        title.setTextSize(30);
         title.setGravity(Gravity.CENTER);
         layout.addView(title);
 
-        TextView info = new TextView(this);
-        info.setText("اختبار h2w Input → h2w Output");
-        info.setTextSize(18);
-        info.setGravity(Gravity.CENTER);
-        layout.addView(info);
+        Button button = new Button(this);
+        button.setText("مراقبة أجهزة الصوت");
+        layout.addView(button);
 
-        Button start = new Button(this);
-        start.setText("تشغيل اختبار h2w");
+        result = new TextView(this);
+        result.setTextSize(16);
+        result.setPadding(10, 20, 10, 10);
+        layout.addView(result);
 
-        start.setOnClickListener(v -> {
+        button.setOnClickListener(v -> {
 
-            if (!running) {
-                startTest();
-                start.setText("إيقاف الاختبار");
+            if (!monitoring) {
+                monitoring = true;
+                button.setText("إيقاف المراقبة");
+                monitor();
             } else {
-                stopTest();
-                start.setText("تشغيل اختبار h2w");
+                monitoring = false;
+                button.setText("مراقبة أجهزة الصوت");
             }
         });
-
-        layout.addView(start);
-
-        resultText = new TextView(this);
-        resultText.setTextSize(16);
-        resultText.setPadding(10, 20, 10, 10);
-        layout.addView(resultText);
 
         setContentView(layout);
     }
 
-    private void startTest() {
+    private void monitor() {
 
-        new Thread(() -> {
+        if (!monitoring) return;
 
-            try {
+        AudioManager am =
+                (AudioManager) getSystemService(AUDIO_SERVICE);
 
-                AudioManager audioManager =
-                        (AudioManager) getSystemService(AUDIO_SERVICE);
+        StringBuilder s = new StringBuilder();
 
-                AudioDeviceInfo inputH2w = null;
-                AudioDeviceInfo outputH2w = null;
+        s.append("INPUTS\n\n");
 
-                for (AudioDeviceInfo d :
-                        audioManager.getDevices(
-                                AudioManager.GET_DEVICES_INPUTS)) {
+        AudioDeviceInfo[] inputs =
+                am.getDevices(AudioManager.GET_DEVICES_INPUTS);
 
-                    if (String.valueOf(d.getProductName())
-                            .toLowerCase()
-                            .contains("h2w")) {
+        for (AudioDeviceInfo d : inputs) {
 
-                        inputH2w = d;
-                        break;
-                    }
-                }
+            s.append("NAME: ")
+                    .append(d.getProductName())
+                    .append("\n");
 
-                for (AudioDeviceInfo d :
-                        audioManager.getDevices(
-                                AudioManager.GET_DEVICES_OUTPUTS)) {
+            s.append("TYPE: ")
+                    .append(d.getType())
+                    .append("\n");
 
-                    if (String.valueOf(d.getProductName())
-                            .toLowerCase()
-                            .contains("h2w")) {
+            s.append("ID: ")
+                    .append(d.getId())
+                    .append("\n");
 
-                        outputH2w = d;
-                        break;
-                    }
-                }
-
-                if (inputH2w == null) {
-                    showResult("h2w INPUT غير موجود ❌");
-                    return;
-                }
-
-                if (outputH2w == null) {
-                    showResult("h2w OUTPUT غير موجود ❌");
-                    return;
-                }
-
-                int bufferSize =
-                        AudioRecord.getMinBufferSize(
-                                SAMPLE_RATE,
-                                AudioFormat.CHANNEL_IN_MONO,
-                                AudioFormat.ENCODING_PCM_16BIT
-                        );
-
-                if (bufferSize <= 0) {
-                    showResult("Buffer Error");
-                    return;
-                }
-
-                recorder = new AudioRecord(
-                        MediaRecorder.AudioSource.MIC,
-                        SAMPLE_RATE,
-                        AudioFormat.CHANNEL_IN_MONO,
-                        AudioFormat.ENCODING_PCM_16BIT,
-                        bufferSize * 2
-                );
-
-                AudioFormat outputFormat =
-                        new AudioFormat.Builder()
-                                .setSampleRate(SAMPLE_RATE)
-                                .setEncoding(
-                                        AudioFormat.ENCODING_PCM_16BIT
-                                )
-                                .setChannelMask(
-                                        AudioFormat.CHANNEL_OUT_MONO
-                                )
-                                .build();
-
-                player = new AudioTrack(
-                        new AudioAttributes.Builder()
-                                .setUsage(
-                                        AudioAttributes.USAGE_MEDIA
-                                )
-                                .setContentType(
-                                        AudioAttributes.CONTENT_TYPE_SPEECH
-                                )
-                                .build(),
-                        outputFormat,
-                        bufferSize * 2,
-                        AudioTrack.MODE_STREAM,
-                        AudioManager.AUDIO_SESSION_ID_GENERATE
-                );
-
-                boolean inputPreferred =
-                        recorder.setPreferredDevice(inputH2w);
-
-                boolean outputPreferred =
-                        player.setPreferredDevice(outputH2w);
-
-                recorder.startRecording();
-                player.play();
-
-                running = true;
-
-                showResult(
-                        "اشتغل الاختبار ✅\n\n" +
-                        "INPUT h2w ID: " +
-                        inputH2w.getId() +
-                        "\n" +
-                        "OUTPUT h2w ID: " +
-                        outputH2w.getId() +
-                        "\n\n" +
-                        "Input Preferred: " +
-                        inputPreferred +
-                        "\n" +
-                        "Output Preferred: " +
-                        outputPreferred
-                );
-
-                short[] buffer =
-                        new short[bufferSize / 2];
-
-                while (running) {
-
-                    int read =
-                            recorder.read(
-                                    buffer,
-                                    0,
-                                    buffer.length
-                            );
-
-                    if (read > 0) {
-
-                        for (int i = 0; i < read; i++) {
-
-                            float sample =
-                                    buffer[i] * 1.8f;
-
-                            if (sample > 32767)
-                                sample = 32767;
-
-                            if (sample < -32768)
-                                sample = -32768;
-
-                            buffer[i] = (short) sample;
-                        }
-
-                        player.write(
-                                buffer,
-                                0,
-                                read
-                        );
-                    }
-                }
-
-            } catch (Exception e) {
-
-                showResult(
-                        "خطأ ❌\n" +
-                        e.getClass().getSimpleName() +
-                        "\n" +
-                        e.getMessage()
-                );
-
-            } finally {
-                stopTest();
-            }
-
-        }, "H2W-Test").start();
-    }
-
-    private void stopTest() {
-
-        running = false;
-
-        if (recorder != null) {
-            try {
-                recorder.stop();
-            } catch (Exception ignored) {}
-
-            recorder.release();
-            recorder = null;
+            s.append("----------------\n");
         }
 
-        if (player != null) {
-            try {
-                player.stop();
-            } catch (Exception ignored) {}
+        s.append("\nOUTPUTS\n\n");
 
-            player.release();
-            player = null;
+        AudioDeviceInfo[] outputs =
+                am.getDevices(AudioManager.GET_DEVICES_OUTPUTS);
+
+        for (AudioDeviceInfo d : outputs) {
+
+            s.append("NAME: ")
+                    .append(d.getProductName())
+                    .append("\n");
+
+            s.append("TYPE: ")
+                    .append(d.getType())
+                    .append("\n");
+
+            s.append("ID: ")
+                    .append(d.getId())
+                    .append("\n");
+
+            s.append("----------------\n");
         }
-    }
 
-    private void showResult(String text) {
+        s.append("\nMODE: ")
+                .append(am.getMode());
 
-        runOnUiThread(() ->
-                resultText.setText(text)
+        result.setText(s.toString());
+
+        handler.postDelayed(
+                this::monitor,
+                1000
         );
     }
 
     @Override
     protected void onDestroy() {
-        stopTest();
+        monitoring = false;
+        handler.removeCallbacksAndMessages(null);
         super.onDestroy();
     }
 }
