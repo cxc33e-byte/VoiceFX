@@ -4,10 +4,9 @@ import android.app.Activity;
 import android.os.Bundle;
 import android.Manifest;
 import android.content.pm.PackageManager;
-import android.media.AudioDeviceInfo;
-import android.media.AudioManager;
-import android.widget.*;
+import android.media.*;
 import android.view.Gravity;
+import android.widget.*;
 
 public class MainActivity extends Activity {
 
@@ -19,11 +18,17 @@ public class MainActivity extends Activity {
 
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO)
                 != PackageManager.PERMISSION_GRANTED) {
+
             requestPermissions(
                     new String[]{Manifest.permission.RECORD_AUDIO},
                     100
             );
         }
+
+        buildUI();
+    }
+
+    private void buildUI() {
 
         LinearLayout layout = new LinearLayout(this);
         layout.setOrientation(LinearLayout.VERTICAL);
@@ -31,107 +36,98 @@ public class MainActivity extends Activity {
         layout.setPadding(30, 40, 30, 30);
 
         TextView title = new TextView(this);
-        title.setText("الزاجل - فحص المايكات");
-        title.setTextSize(26);
+        title.setText("الزاجل");
+        title.setTextSize(30);
         title.setGravity(Gravity.CENTER);
 
         layout.addView(title);
 
-        Button scan = new Button(this);
-        scan.setText("فحص مصادر المايك");
-        layout.addView(scan);
+        Button test = new Button(this);
+        test.setText("اختبار المصدر TYPE 25 - ID 21");
+
+        layout.addView(test);
 
         result = new TextView(this);
         result.setTextSize(18);
+        result.setGravity(Gravity.CENTER);
         result.setPadding(10, 30, 10, 10);
 
         layout.addView(result);
 
-        scan.setOnClickListener(v -> scanDevices());
+        test.setOnClickListener(v -> testSource());
 
         setContentView(layout);
     }
 
-    private void scanDevices() {
+    private void testSource() {
 
         AudioManager manager =
                 (AudioManager) getSystemService(AUDIO_SERVICE);
 
         AudioDeviceInfo[] devices =
-                manager.getDevices(AudioManager.GET_DEVICES_INPUTS);
+                manager.getDevices(
+                        AudioManager.GET_DEVICES_INPUTS
+                );
 
-        StringBuilder text = new StringBuilder();
+        AudioDeviceInfo target = null;
 
-        text.append("عدد مصادر الإدخال: ")
-                .append(devices.length)
-                .append("\n\n");
+        for (AudioDeviceInfo device : devices) {
 
-        for (int i = 0; i < devices.length; i++) {
-
-            AudioDeviceInfo device = devices[i];
-
-            int type = device.getType();
-            int id = device.getId();
-
-            text.append("المصدر ")
-                    .append(i + 1)
-                    .append("\n");
-
-            text.append("الاسم: ")
-                    .append(device.getProductName())
-                    .append("\n");
-
-            text.append("النوع: ")
-                    .append(getTypeName(type))
-                    .append("\n");
-
-            text.append("TYPE: ")
-                    .append(type)
-                    .append("\n");
-
-            text.append("ID: ")
-                    .append(id)
-                    .append("\n");
-
-            text.append("--------------------\n\n");
+            if (device.getId() == 21) {
+                target = device;
+                break;
+            }
         }
 
-        result.setText(text.toString());
-    }
+        if (target == null) {
 
-    private String getTypeName(int type) {
+            result.setText(
+                    "المصدر ID 21 غير موجود حالياً."
+            );
 
-        switch (type) {
+            return;
+        }
 
-            case AudioDeviceInfo.TYPE_BUILTIN_MIC:
-                return "BUILTIN_MIC - مايك الجهاز";
+        int bufferSize =
+                AudioRecord.getMinBufferSize(
+                        44100,
+                        AudioFormat.CHANNEL_IN_MONO,
+                        AudioFormat.ENCODING_PCM_16BIT
+                );
 
-            case AudioDeviceInfo.TYPE_BUILTIN_EARPIECE:
-                return "BUILTIN_EARPIECE";
+        try {
 
-            case AudioDeviceInfo.TYPE_WIRED_HEADSET:
-                return "WIRED_HEADSET";
+            AudioRecord recorder =
+                    new AudioRecord(
+                            MediaRecorder.AudioSource.MIC,
+                            44100,
+                            AudioFormat.CHANNEL_IN_MONO,
+                            AudioFormat.ENCODING_PCM_16BIT,
+                            bufferSize * 2
+                    );
 
-            case AudioDeviceInfo.TYPE_WIRED_HEADPHONES:
-                return "WIRED_HEADPHONES";
+            boolean accepted =
+                    recorder.setPreferredDevice(target);
 
-            case AudioDeviceInfo.TYPE_BLUETOOTH_SCO:
-                return "BLUETOOTH_SCO";
+            result.setText(
+                    "ID: 21\n" +
+                    "TYPE: 25\n\n" +
+                    "نتيجة اختيار المصدر:\n" +
+                    (accepted
+                            ? "تم قبول المصدر من النظام ✅"
+                            : "النظام رفض المصدر ❌")
+            );
 
-            case AudioDeviceInfo.TYPE_BLUETOOTH_A2DP:
-                return "BLUETOOTH_A2DP";
+            recorder.release();
 
-            case AudioDeviceInfo.TYPE_USB_DEVICE:
-                return "USB_DEVICE";
+        } catch (Exception e) {
 
-            case AudioDeviceInfo.TYPE_USB_HEADSET:
-                return "USB_HEADSET";
-
-            case AudioDeviceInfo.TYPE_TELEPHONY:
-                return "TELEPHONY - الاتصالات";
-
-            default:
-                return "OTHER - غير معروف";
+            result.setText(
+                    "صار خطأ:\n\n" +
+                    e.getClass().getSimpleName() +
+                    "\n" +
+                    e.getMessage()
+            );
         }
     }
 }
