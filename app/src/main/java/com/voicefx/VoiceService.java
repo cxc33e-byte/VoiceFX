@@ -10,17 +10,21 @@ public class VoiceService extends Service {
     private AudioRecord recorder;
     private AudioTrack player;
     private Thread audioThread;
+
     private volatile boolean running = false;
 
     private static final int SAMPLE_RATE = 44100;
+    private static final int CHANNEL_IN = AudioFormat.CHANNEL_IN_MONO;
+    private static final int CHANNEL_OUT = AudioFormat.CHANNEL_OUT_MONO;
 
+    // المؤثرات
     private float boost = 1.8f;
     private float volume = 1.0f;
     private float echo = 0.25f;
     private float noise = 0.0f;
 
     private short[] echoBuffer;
-    private int echoIndex = 0;
+    private int echoIndex;
 
     @Override
     public void onCreate() {
@@ -31,8 +35,9 @@ public class VoiceService extends Service {
         Notification notification =
                 new Notification.Builder(this, "alzajel")
                         .setContentTitle("الزاجل")
-                        .setContentText("المؤثرات الصوتية تعمل")
+                        .setContentText("معالجة الصوت تعمل")
                         .setSmallIcon(android.R.drawable.ic_btn_speak_now)
+                        .setOngoing(true)
                         .build();
 
         startForeground(1001, notification);
@@ -44,23 +49,29 @@ public class VoiceService extends Service {
 
         int bufferSize = AudioRecord.getMinBufferSize(
                 SAMPLE_RATE,
-                AudioFormat.CHANNEL_IN_MONO,
+                CHANNEL_IN,
                 AudioFormat.ENCODING_PCM_16BIT
         );
 
-        if (bufferSize <= 0) return;
+        if (bufferSize <= 0) {
+            return;
+        }
+
+        bufferSize *= 2;
 
         try {
 
             recorder = new AudioRecord(
                     MediaRecorder.AudioSource.MIC,
                     SAMPLE_RATE,
-                    AudioFormat.CHANNEL_IN_MONO,
+                    CHANNEL_IN,
                     AudioFormat.ENCODING_PCM_16BIT,
-                    bufferSize * 2
+                    bufferSize
             );
 
-            if (recorder.getState() != AudioRecord.STATE_INITIALIZED) {
+            if (recorder.getState()
+                    != AudioRecord.STATE_INITIALIZED) {
+
                 stopAudio();
                 return;
             }
@@ -68,26 +79,32 @@ public class VoiceService extends Service {
             player = new AudioTrack(
                     new AudioAttributes.Builder()
                             .setUsage(AudioAttributes.USAGE_MEDIA)
-                            .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                            .setAllowedCapturePolicy(
-                                    AudioAttributes.ALLOW_CAPTURE_BY_ALL
+                            .setContentType(
+                                    AudioAttributes.CONTENT_TYPE_SPEECH
                             )
                             .build(),
+
                     new AudioFormat.Builder()
                             .setSampleRate(SAMPLE_RATE)
-                            .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-                            .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                            .setEncoding(
+                                    AudioFormat.ENCODING_PCM_16BIT
+                            )
+                            .setChannelMask(CHANNEL_OUT)
                             .build(),
-                    bufferSize * 2,
+
+                    bufferSize,
                     AudioTrack.MODE_STREAM,
                     AudioManager.AUDIO_SESSION_ID_GENERATE
             );
 
-            if (player.getState() != AudioTrack.STATE_INITIALIZED) {
+            if (player.getState()
+                    != AudioTrack.STATE_INITIALIZED) {
+
                 stopAudio();
                 return;
             }
 
+            // 330ms تقريباً من الصدى
             echoBuffer = new short[SAMPLE_RATE / 3];
             echoIndex = 0;
 
@@ -98,7 +115,8 @@ public class VoiceService extends Service {
 
             audioThread = new Thread(() -> {
 
-                short[] buffer = new short[bufferSize];
+                short[] buffer =
+                        new short[bufferSize / 2];
 
                 while (running) {
 
@@ -110,8 +128,23 @@ public class VoiceService extends Service {
 
                     if (read > 0) {
 
-                        processAudio(buffer, read);
+                        processAudio(
+                                buffer,
+                                read
+                        );
 
+                        /*
+                         * هذا هو الـPCM المعالج.
+                         *
+                         * لاحقاً نربطه بطبقة
+                         * Virtual Microphone.
+                         */
+                        sendProcessedAudio(
+                                buffer,
+                                read
+                        );
+
+                        // حالياً فقط للمراقبة المحلية
                         player.write(
                                 buffer,
                                 0,
@@ -120,16 +153,19 @@ public class VoiceService extends Service {
                     }
                 }
 
-            });
+            }, "AlZajelAudio");
 
             audioThread.start();
 
         } catch (Exception e) {
+
             stopAudio();
         }
     }
 
-    private void processAudio(short[] buffer, int length) {
+    private void processAudio(
+            short[] buffer,
+            int length) {
 
         for (int i = 0; i < length; i++) {
 
@@ -142,24 +178,41 @@ public class VoiceService extends Service {
             sample *= volume;
 
             // الصدى
-            short delayed = echoBuffer[echoIndex];
+            if (echo > 0.0f) {
 
-            sample += delayed * echo;
+                short delayed =
+                        echoBuffer[echoIndex];
 
-            // الوشوشة
-            if (noise > 0) {
                 sample +=
-                        (Math.random() * 2.0 - 1.0)
-                        * 3000.0f
-                        * noise;
+                        delayed * echo;
             }
 
-            sample = Math.max(
-                    -32768,
-                    Math.min(32767, sample)
-            );
+            // الوشوشة
+            if (noise > 0.0f) {
 
-            echoBuffer[echoIndex] = (short) sample;
+                double random =
+                        Math.random() * 2.0 - 1.0;
+
+                sample +=
+                        random *
+                        3000.0f *
+                        noise;
+            }
+
+            // منع التشويش الرقمي
+            if (sample > 32767) {
+                sample = 32767;
+            }
+
+            if (sample < -32768) {
+                sample = -32768;
+            }
+
+            short output =
+                    (short) sample;
+
+            echoBuffer[echoIndex] =
+                    output;
 
             echoIndex++;
 
@@ -167,15 +220,39 @@ public class VoiceService extends Service {
                 echoIndex = 0;
             }
 
-            buffer[i] = (short) sample;
+            buffer[i] = output;
         }
+    }
+
+    /*
+     * نقطة خروج الصوت المعالج.
+     *
+     * حالياً لا نرسله لأي تطبيق آخر.
+     * هذه النقطة هي التي سنربطها لاحقاً
+     * بالـVirtual Microphone إذا كان الحل
+     * المستخدم يوفر واجهة لذلك.
+     */
+    private void sendProcessedAudio(
+            short[] buffer,
+            int length) {
+
+        // الصوت المعالج موجود هنا كـPCM 16-bit mono.
+        // لا نرسل الصوت إلى Telegram مباشرة،
+        // لأن Android يمنع التطبيق العادي من
+        // استبدال ميكروفون تطبيق آخر.
     }
 
     private void stopAudio() {
 
         running = false;
 
+        if (audioThread != null) {
+            audioThread.interrupt();
+            audioThread = null;
+        }
+
         if (recorder != null) {
+
             try {
                 recorder.stop();
             } catch (Exception ignored) {}
@@ -185,6 +262,7 @@ public class VoiceService extends Service {
         }
 
         if (player != null) {
+
             try {
                 player.stop();
             } catch (Exception ignored) {}
@@ -193,8 +271,8 @@ public class VoiceService extends Service {
             player = null;
         }
 
-        audioThread = null;
         echoBuffer = null;
+        echoIndex = 0;
     }
 
     private void createNotificationChannel() {
@@ -213,7 +291,9 @@ public class VoiceService extends Service {
                             NotificationManager.class
                     );
 
-            manager.createNotificationChannel(channel);
+            if (manager != null) {
+                manager.createNotificationChannel(channel);
+            }
         }
     }
 
@@ -230,6 +310,7 @@ public class VoiceService extends Service {
     public void onDestroy() {
 
         stopAudio();
+
         super.onDestroy();
     }
 
