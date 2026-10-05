@@ -67,7 +67,7 @@ public class MainActivity extends Activity {
 
         AudioDeviceInfo[] devices =
                 audioManager.getDevices(
-                        AudioManager.GET_DEVICES_INPUT
+                        AudioManager.GET_DEVICES_INPUTS
                 );
 
         StringBuilder text = new StringBuilder();
