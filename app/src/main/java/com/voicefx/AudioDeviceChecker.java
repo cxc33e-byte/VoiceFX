@@ -11,11 +11,11 @@ public class AudioDeviceChecker {
 
         StringBuilder result = new StringBuilder();
 
-        result.append("الزاجل - فحص Audio Input\n\n");
+        result.append("الزاجل - مخارج الصوت\n\n");
 
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+        if (Build.VERSION.SDK_INT < 23) {
             return result.append(
-                    "إصدار أندرويد قديم"
+                    "Android قديم"
             ).toString();
         }
 
@@ -25,23 +25,16 @@ public class AudioDeviceChecker {
                 );
 
         if (audioManager == null) {
-            return result.append(
-                    "AudioManager غير متوفر"
-            ).toString();
+            return "AudioManager غير متوفر";
         }
 
         AudioDeviceInfo[] devices =
                 audioManager.getDevices(
-                        AudioManager.GET_DEVICES_INPUTS
+                        AudioManager.GET_DEVICES_OUTPUTS
                 );
 
-        if (devices.length == 0) {
-            result.append("ماكو أجهزة إدخال.\n");
-            return result.toString();
-        }
-
         result.append(
-                "عدد أجهزة الإدخال: "
+                "عدد مخارج الصوت: "
         ).append(devices.length)
          .append("\n\n");
 
