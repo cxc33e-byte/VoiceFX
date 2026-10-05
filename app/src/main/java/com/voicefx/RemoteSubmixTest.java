@@ -24,7 +24,7 @@ public class RemoteSubmixTest {
                 );
 
         if (bufferSize <= 0) {
-            return "Buffer Error: " + bufferSize;
+            return "Buffer Error";
         }
 
         AudioRecord record = null;
@@ -47,18 +47,30 @@ public class RemoteSubmixTest {
 
             record.startRecording();
 
+            StringBuilder result =
+                    new StringBuilder();
+
+            result.append(
+                    "بدأ الاختبار لمدة 15 ثانية\n\n"
+            );
+
+            result.append(
+                    "هسه افتح Telegram وسوِّ تسجيل صوتي.\n\n"
+            );
+
             short[] buffer =
                     new short[bufferSize / 2];
 
             int totalSamples = 0;
             int positiveReads = 0;
+            int zeroReads = 0;
 
             long start =
                     System.currentTimeMillis();
 
             while (
                     System.currentTimeMillis()
-                    - start < 10000
+                    - start < 15000
             ) {
 
                 int read =
@@ -70,8 +82,13 @@ public class RemoteSubmixTest {
                         );
 
                 if (read > 0) {
+
                     totalSamples += read;
                     positiveReads++;
+
+                } else if (read == 0) {
+
+                    zeroReads++;
                 }
 
                 try {
@@ -80,21 +97,54 @@ public class RemoteSubmixTest {
                 }
             }
 
-            return
-                    "مراقبة المايك انتهت ✅\n\n" +
-                    "RecordingState: " +
-                    record.getRecordingState() +
-                    "\n" +
-                    "Positive reads: " +
-                    positiveReads +
-                    "\n" +
-                    "Total PCM samples: " +
-                    totalSamples;
+            result.append(
+                    "انتهى الاختبار.\n\n"
+            );
+
+            result.append(
+                    "RecordingState: "
+            );
+
+            result.append(
+                    record.getRecordingState()
+            );
+
+            result.append("\n");
+
+            result.append(
+                    "Positive reads: "
+            );
+
+            result.append(
+                    positiveReads
+            );
+
+            result.append("\n");
+
+            result.append(
+                    "Zero reads: "
+            );
+
+            result.append(
+                    zeroReads
+            );
+
+            result.append("\n");
+
+            result.append(
+                    "Total PCM samples: "
+            );
+
+            result.append(
+                    totalSamples
+            );
+
+            return result.toString();
 
         } catch (Exception e) {
 
             return
-                    "خطأ ❌\n" +
+                    "خطأ:\n" +
                     e.getClass().getSimpleName() +
                     "\n" +
                     e.getMessage();
