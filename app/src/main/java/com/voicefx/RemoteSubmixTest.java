@@ -1,45 +1,32 @@
 package com.voicefx;
 
-import android.media.AudioAttributes;
-import android.media.AudioDeviceInfo;
 import android.media.AudioFormat;
-import android.media.AudioManager;
 import android.media.AudioRecord;
-import android.media.AudioTrack;
+import android.media.AudioRecordingConfiguration;
 import android.media.MediaRecorder;
 import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
+
+import java.util.List;
 
 public class RemoteSubmixTest {
 
-    public static String test(AudioManager audioManager) {
+    public interface ResultListener {
+        void onResult(String result);
+    }
 
-        if (Build.VERSION.SDK_INT < 23) {
-            return "Android قديم";
-        }
+    public static void monitor(
+            final ResultListener listener) {
 
-        if (audioManager == null) {
-            return "AudioManager غير متوفر";
-        }
-
-        AudioDeviceInfo target = null;
-
-        for (AudioDeviceInfo device :
-                audioManager.getDevices(
-                        AudioManager.GET_DEVICES_INPUTS)) {
-
-            if (device.getId() == 21) {
-                target = device;
-                break;
-            }
-        }
-
-        if (target == null) {
-            return "ID 21 غير موجود";
+        if (Build.VERSION.SDK_INT < 24) {
+            listener.onResult("Android أقل من 7.0");
+            return;
         }
 
         final int sampleRate = 48000;
 
-        int bufferSize =
+        final int bufferSize =
                 AudioRecord.getMinBufferSize(
                         sampleRate,
                         AudioFormat.CHANNEL_IN_MONO,
@@ -47,159 +34,182 @@ public class RemoteSubmixTest {
                 );
 
         if (bufferSize <= 0) {
-            return "Buffer Error: " + bufferSize;
+            listener.onResult(
+                    "Buffer Error: " + bufferSize
+            );
+            return;
         }
 
-        AudioTrack player = null;
-        AudioRecord record = null;
+        final AudioRecord record;
 
         try {
-
-            AudioAttributes attributes =
-                    new AudioAttributes.Builder()
-                            .setUsage(
-                                    AudioAttributes.USAGE_MEDIA
-                            )
-                            .setContentType(
-                                    AudioAttributes.CONTENT_TYPE_SPEECH
-                            )
-                            .build();
-
-            AudioFormat outputFormat =
-                    new AudioFormat.Builder()
-                            .setSampleRate(sampleRate)
-                            .setEncoding(
-                                    AudioFormat.ENCODING_PCM_16BIT
-                            )
-                            .setChannelMask(
-                                    AudioFormat.CHANNEL_OUT_MONO
-                            )
-                            .build();
-
-            player = new AudioTrack(
-                    attributes,
-                    outputFormat,
-                    bufferSize * 2,
-                    AudioTrack.MODE_STREAM,
-                    AudioManager.AUDIO_SESSION_ID_GENERATE
-            );
 
             record = new AudioRecord(
                     MediaRecorder.AudioSource.MIC,
                     sampleRate,
                     AudioFormat.CHANNEL_IN_MONO,
                     AudioFormat.ENCODING_PCM_16BIT,
-                    bufferSize * 4
+                    bufferSize * 2
             );
 
-            if (player.getState()
-                    != AudioTrack.STATE_INITIALIZED) {
+        } catch (Exception e) {
 
-                return "AudioTrack فشل بالتهيئة";
-            }
+            listener.onResult(
+                    "AudioRecord Error: " +
+                    e.getMessage()
+            );
+            return;
+        }
 
-            if (record.getState()
-                    != AudioRecord.STATE_INITIALIZED) {
+        if (record.getState()
+                != AudioRecord.STATE_INITIALIZED) {
 
-                return "AudioRecord فشل بالتهيئة";
-            }
+            record.release();
 
-            boolean preferred =
-                    record.setPreferredDevice(target);
+            listener.onResult(
+                    "AudioRecord ما تهيأ"
+            );
 
-            if (!preferred) {
-                return "توجيه AudioRecord إلى ID 21 فشل";
-            }
+            return;
+        }
 
-            short[] tone =
-                    new short[4800];
+        final StringBuilder result =
+                new StringBuilder();
 
-            for (int i = 0; i < tone.length; i++) {
+        result.append(
+                "مراقبة المايك بدأت ✅\n\n"
+        );
 
-                double angle =
-                        2.0 * Math.PI * 440.0 *
-                        i / sampleRate;
+        record.registerAudioRecordingCallback(
+                new AudioRecord.AudioRecordingCallback() {
 
-                tone[i] =
-                        (short)
-                        (Math.sin(angle) * 10000);
-            }
+                    @Override
+                    public void onRecordingConfigChanged(
+                            AudioRecordingConfiguration config) {
 
-            player.play();
+                        result.append(
+                                "تغيير بالمصدر:\n"
+                        );
+
+                        result.append(
+                                "Client Audio Source: "
+                        );
+
+                        result.append(
+                                config.getClientAudioSource()
+                        );
+
+                        result.append("\n");
+
+                        if (Build.VERSION.SDK_INT >= 29) {
+
+                            result.append(
+                                    "Silenced: "
+                            );
+
+                            result.append(
+                                    config.isClientSilenced()
+                            );
+
+                            result.append("\n");
+                        }
+
+                        result.append(
+                                "----------------\n"
+                        );
+                    }
+                },
+                new Handler(
+                        Looper.getMainLooper()
+                )
+        );
+
+        try {
+
             record.startRecording();
 
-            player.write(
-                    tone,
-                    0,
-                    tone.length
+            result.append(
+                    "RecordingState: "
             );
 
-            short[] input =
-                    new short[bufferSize / 2];
+            result.append(
+                    record.getRecordingState()
+            );
 
-            int totalRead = 0;
-            int positiveReads = 0;
+            result.append("\n");
+
+        } catch (Exception e) {
+
+            record.release();
+
+            listener.onResult(
+                    "Start Error: " +
+                    e.getMessage()
+            );
+
+            return;
+        }
+
+        new Thread(() -> {
+
+            short[] buffer =
+                    new short[bufferSize / 2];
 
             long start =
                     System.currentTimeMillis();
 
-            while (System.currentTimeMillis() - start < 1500) {
+            int totalSamples = 0;
+
+            while (
+                    System.currentTimeMillis()
+                    - start < 10000
+            ) {
 
                 int read =
                         record.read(
-                                input,
+                                buffer,
                                 0,
-                                input.length,
+                                buffer.length,
                                 AudioRecord.READ_NON_BLOCKING
                         );
 
                 if (read > 0) {
-                    totalRead += read;
-                    positiveReads++;
+                    totalSamples += read;
+                }
+
+                try {
+                    Thread.sleep(100);
+                } catch (InterruptedException ignored) {
                 }
             }
 
-            return
-                    "ID 21 موجود ✅\n" +
-                    "Preferred: " + preferred + "\n" +
-                    "Positive reads: " +
-                    positiveReads + "\n" +
-                    "Total PCM: " +
-                    totalRead;
-
-        } catch (SecurityException e) {
-
-            return
-                    "النظام منع الالتقاط ❌\n" +
-                    e.getMessage();
-
-        } catch (Exception e) {
-
-            return
-                    "خطأ ❌\n" +
-                    e.getClass().getSimpleName() +
-                    "\n" +
-                    e.getMessage();
-
-        } finally {
-
-            if (record != null) {
-
-                try {
-                    record.stop();
-                } catch (Exception ignored) {}
-
-                record.release();
+            try {
+                record.stop();
+            } catch (Exception ignored) {
             }
 
-            if (player != null) {
+            record.release();
 
-                try {
-                    player.stop();
-                } catch (Exception ignored) {}
+            result.append(
+                    "\nانتهت المراقبة.\n"
+            );
 
-                player.release();
-            }
-        }
+            result.append(
+                    "Total PCM samples: "
+            );
+
+            result.append(
+                    totalSamples
+            );
+
+            new Handler(
+                    Looper.getMainLooper()
+            ).post(() ->
+                    listener.onResult(
+                            result.toString()
+                    )
+            );
+
+        }, "MicMonitor").start();
     }
 }
