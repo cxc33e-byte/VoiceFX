@@ -10,14 +10,13 @@ public class VoiceService extends Service {
     private AudioRecord recorder;
     private AudioTrack player;
     private Thread audioThread;
-
     private volatile boolean running = false;
 
     private static final int SAMPLE_RATE = 44100;
 
-    private float boost = 1.5f;
-    private float echo = 0.0f;
+    private float boost = 1.8f;
     private float volume = 1.0f;
+    private float echo = 0.25f;
     private float noise = 0.0f;
 
     private short[] echoBuffer;
@@ -30,14 +29,11 @@ public class VoiceService extends Service {
         createNotificationChannel();
 
         Notification notification =
-                new Notification.Builder(
-                        this,
-                        "alzajel"
-                )
-                .setContentTitle("الزاجل")
-                .setContentText("المؤثرات الصوتية تعمل")
-                .setSmallIcon(android.R.drawable.ic_btn_speak_now)
-                .build();
+                new Notification.Builder(this, "alzajel")
+                        .setContentTitle("الزاجل")
+                        .setContentText("المؤثرات الصوتية تعمل")
+                        .setSmallIcon(android.R.drawable.ic_btn_speak_now)
+                        .build();
 
         startForeground(1001, notification);
 
@@ -46,12 +42,11 @@ public class VoiceService extends Service {
 
     private void startAudio() {
 
-        int bufferSize =
-                AudioRecord.getMinBufferSize(
-                        SAMPLE_RATE,
-                        AudioFormat.CHANNEL_IN_MONO,
-                        AudioFormat.ENCODING_PCM_16BIT
-                );
+        int bufferSize = AudioRecord.getMinBufferSize(
+                SAMPLE_RATE,
+                AudioFormat.CHANNEL_IN_MONO,
+                AudioFormat.ENCODING_PCM_16BIT
+        );
 
         if (bufferSize <= 0) return;
 
@@ -65,18 +60,35 @@ public class VoiceService extends Service {
                     bufferSize * 2
             );
 
+            if (recorder.getState() != AudioRecord.STATE_INITIALIZED) {
+                stopAudio();
+                return;
+            }
+
             player = new AudioTrack(
-                    AudioManager.STREAM_MUSIC,
-                    SAMPLE_RATE,
-                    AudioFormat.CHANNEL_OUT_MONO,
-                    AudioFormat.ENCODING_PCM_16BIT,
+                    new AudioAttributes.Builder()
+                            .setUsage(AudioAttributes.USAGE_MEDIA)
+                            .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                            .setAllowedCapturePolicy(
+                                    AudioAttributes.ALLOW_CAPTURE_BY_ALL
+                            )
+                            .build(),
+                    new AudioFormat.Builder()
+                            .setSampleRate(SAMPLE_RATE)
+                            .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                            .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                            .build(),
                     bufferSize * 2,
-                    AudioTrack.MODE_STREAM
+                    AudioTrack.MODE_STREAM,
+                    AudioManager.AUDIO_SESSION_ID_GENERATE
             );
 
-            echoBuffer =
-                    new short[SAMPLE_RATE / 3];
+            if (player.getState() != AudioTrack.STATE_INITIALIZED) {
+                stopAudio();
+                return;
+            }
 
+            echoBuffer = new short[SAMPLE_RATE / 3];
             echoIndex = 0;
 
             recorder.startRecording();
@@ -86,24 +98,19 @@ public class VoiceService extends Service {
 
             audioThread = new Thread(() -> {
 
-                short[] buffer =
-                        new short[bufferSize];
+                short[] buffer = new short[bufferSize];
 
                 while (running) {
 
-                    int read =
-                            recorder.read(
-                                    buffer,
-                                    0,
-                                    buffer.length
-                            );
+                    int read = recorder.read(
+                            buffer,
+                            0,
+                            buffer.length
+                    );
 
                     if (read > 0) {
 
-                        processAudio(
-                                buffer,
-                                read
-                        );
+                        processAudio(buffer, read);
 
                         player.write(
                                 buffer,
@@ -122,9 +129,7 @@ public class VoiceService extends Service {
         }
     }
 
-    private void processAudio(
-            short[] buffer,
-            int length) {
+    private void processAudio(short[] buffer, int length) {
 
         for (int i = 0; i < length; i++) {
 
@@ -137,39 +142,24 @@ public class VoiceService extends Service {
             sample *= volume;
 
             // الصدى
-            if (echo > 0) {
+            short delayed = echoBuffer[echoIndex];
 
-                short delayed =
-                        echoBuffer[echoIndex];
-
-                sample +=
-                        delayed *
-                        (echo * 0.8f);
-            }
+            sample += delayed * echo;
 
             // الوشوشة
             if (noise > 0) {
-
-                double random =
-                        Math.random() * 2.0 - 1.0;
-
                 sample +=
-                        random *
-                        3000.0f *
-                        noise;
+                        (Math.random() * 2.0 - 1.0)
+                        * 3000.0f
+                        * noise;
             }
 
-            sample =
-                    Math.max(
-                            -32768,
-                            Math.min(
-                                    32767,
-                                    sample
-                            )
-                    );
+            sample = Math.max(
+                    -32768,
+                    Math.min(32767, sample)
+            );
 
-            echoBuffer[echoIndex] =
-                    (short) sample;
+            echoBuffer[echoIndex] = (short) sample;
 
             echoIndex++;
 
@@ -177,8 +167,7 @@ public class VoiceService extends Service {
                 echoIndex = 0;
             }
 
-            buffer[i] =
-                    (short) sample;
+            buffer[i] = (short) sample;
         }
     }
 
@@ -187,7 +176,6 @@ public class VoiceService extends Service {
         running = false;
 
         if (recorder != null) {
-
             try {
                 recorder.stop();
             } catch (Exception ignored) {}
@@ -197,7 +185,6 @@ public class VoiceService extends Service {
         }
 
         if (player != null) {
-
             try {
                 player.stop();
             } catch (Exception ignored) {}
@@ -206,10 +193,7 @@ public class VoiceService extends Service {
             player = null;
         }
 
-        if (audioThread != null) {
-            audioThread = null;
-        }
-
+        audioThread = null;
         echoBuffer = null;
     }
 
@@ -246,14 +230,11 @@ public class VoiceService extends Service {
     public void onDestroy() {
 
         stopAudio();
-
         super.onDestroy();
     }
 
     @Override
-    public android.os.IBinder onBind(
-            Intent intent) {
-
+    public IBinder onBind(Intent intent) {
         return null;
     }
 }
